@@ -1,2 +1,2 @@
 # Wheat-Growth-Stage
-CGIAR Wheat Growth Stage Challengeby CGIAR Platform for Big Data in Agriculture
+CGIAR Wheat Growth Stage Challenge by CGIAR Platform for Big Data in Agriculture
