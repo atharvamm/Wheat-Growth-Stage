@@ -1,0 +1,10 @@
+checkpoints/
+files/
+Images/
+logs/
+README.md
+run_val_test.py
+submissions
+tester.py
+test.py
+__pycache__
