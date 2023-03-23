@@ -19,16 +19,17 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Config Dictionary
 config = {
-    "epochs" : 2,
-    "batch_size" : 50,
-    "write_text" : "Wheat-Growth-Stage\n\n\n\n",
+    "epochs" : 500,
+    "batch_size" : 32,
+    "write_text" : "Wheat-Growth-Stage\n\n",
     "clear_logs" : True,
     "lr" : 1e-3,
-    "weight_decay" : 1e-3,
-    "T_0" : 20,
-    "T_mult" : 2,
-    "eta_min" : 1e-11,
-
+    "weight_decay" : 1.5e-3,
+    "factor" : 0.25,
+    "patience" : 5,
+    "threshold" : 1e-3,
+    "threshold_mode" : "rel",
+    "min_lr" : 1e-8, 
 }
 
 
@@ -132,6 +133,10 @@ if __name__ == "__main__":
     # Define transforms
     train_transforms = torchvision.transforms.Compose([
         torchvision.transforms.Resize((224,224)),
+        torchvision.transforms.RandomPerspective(distortion_scale = 0.1,p=0.5),
+        torchvision.transforms.RandomRotation(degrees=15),
+        torchvision.transforms.RandomHorizontalFlip(p=0.5),
+        torchvision.transforms.RandomVerticalFlip(p=0.5),
         torchvision.transforms.ToTensor(),
     ])
     val_transforms = torchvision.transforms.Compose([
@@ -142,6 +147,7 @@ if __name__ == "__main__":
 
     # Load train,val data and initialize data loader
     train_df = pd.read_csv("files/Train.csv")
+    # train_df = train_df[train_df["label_quality"] == 2]
     train_df["growth_stage"] = train_df["growth_stage"] - 1
     X_train,X_test,y_train,y_test = train_test_split(train_df["UID"],train_df["growth_stage"],test_size=0.3)
     X_train,y_train = X_train.values.tolist(),y_train.values.tolist()
@@ -158,7 +164,8 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(test_dataset,batch_size=config["batch_size"],shuffle = False)
 
     # Initialize model object
-    model = ResNet()
+    model = ResNet34()
+    # print(model)
     model.to(DEVICE)
 
     print("Train Batch Size:",len(train_dataloader))
@@ -166,8 +173,8 @@ if __name__ == "__main__":
     print("Test Batch Size:",len(test_dataloader))
     # Define loss fun, optimizer, scheduler,etc.
     optimizer = torch.optim.AdamW(params=model.parameters(),lr=config["lr"],weight_decay=config["weight_decay"])
-    loss_fn = nn.CrossEntropyLoss()
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer,T_0 = config["T_0"],T_mult=config["T_mult"],eta_min=config["eta_min"])
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.0)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,factor=config["factor"],patience=config["patience"],threshold=config["threshold"],threshold_mode=config["threshold_mode"],min_lr=config["min_lr"])
     
     # Get datetime string
     date_time = get_datetimestr()
@@ -190,7 +197,7 @@ if __name__ == "__main__":
         val_loss,val_acc = val(model=model,dataloader=val_dataloader,criterion=loss_fn)
 
         lr = float(optimizer.param_groups[0]["lr"])
-        log_vals = [epoch, train_loss,train_acc,val_loss,val_acc,lr]
+        log_vals = [epoch + 1, train_loss,train_acc,val_loss,val_acc,lr]
 
         logs_df.loc[len(logs_df)] = log_vals
         write_logs(log_vals,logs_fname)
@@ -202,10 +209,12 @@ if __name__ == "__main__":
                 "val_acc" : val_acc,
                 "optimizer_state_dict" : optimizer.state_dict(),
             },"checkpoints/checkpoint_{:.2f}_{}.pth".format(val_acc,date_time))
+        
+        scheduler.step(val_acc)
     # Write submission file
     predictions = test(model = model,dataloader = test_dataloader)
     write_submissions(predictions,date_time)
 
 
-
+# nohup python main.py > output.txt 2>&1 &
 
